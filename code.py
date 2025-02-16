@@ -17,99 +17,126 @@ except ImportError:
     print("❌ WiFi secrets are missing! Add them to secrets.py")
     raise
 
-# ✅ Check if SD card is mounted
-if storage.getmount("/"):
-    print("✅ SD card is already mounted, skipping SD setup.")
+# ✅ Initialize Display
+def initialize_display():
+    """Initialize the PyPortal display and create a simple background."""
+    display = board.DISPLAY
+    splash = displayio.Group()
+    bg_rect = Rect(0, 0, display.width, display.height, fill=0x000000)  # Black background
+    splash.append(bg_rect)
+    display.root_group = splash
+    return display, splash
 
-# ✅ Initialize Display (Manually, Avoiding PyPortal's Built-in Init)
-display = board.DISPLAY
+# ✅ Create Text Labels
+def create_labels(splash):
+    """Create and return text labels for displaying network information."""
+    text_area_ip = label.Label(
+        terminalio.FONT,
+        text="Connecting...",
+        color=0xFFFFFF,  # White text
+        x=10,
+        y=30
+    )
+    splash.append(text_area_ip)
 
-# ✅ Create a Simple Background Rectangle (instead of an image)
-splash = displayio.Group()
-bg_rect = Rect(0, 0, display.width, display.height, fill=0x000000)  # Black background
-splash.append(bg_rect)
+    text_area_ssid = label.Label(
+        terminalio.FONT,
+        text="SSID: ...",
+        color=0xFFFFFF,  # White text
+        x=10,
+        y=60
+    )
+    splash.append(text_area_ssid)
 
-# ✅ Create Labels to Display Network Information
-text_area_ip = label.Label(
-    terminalio.FONT,
-    text="Connecting...",
-    color=0xFFFFFF,  # White text
-    x=10,
-    y=30
-)
-splash.append(text_area_ip)
+    text_area_mac = label.Label(
+        terminalio.FONT,
+        text="MAC: ...",
+        color=0xFFFFFF,  # White text
+        x=10,
+        y=90
+    )
+    splash.append(text_area_mac)
 
-text_area_ssid = label.Label(
-    terminalio.FONT,
-    text="SSID: ...",
-    color=0xFFFFFF,  # White text
-    x=10,
-    y=60
-)
-splash.append(text_area_ssid)
+    return text_area_ip, text_area_ssid, text_area_mac
 
-text_area_mac = label.Label(
-    terminalio.FONT,
-    text="MAC: ...",
-    color=0xFFFFFF,  # White text
-    x=10,
-    y=90
-)
-splash.append(text_area_mac)
+# ✅ Initialize Wi-Fi
+def initialize_wifi():
+    """Initialize the ESP32 co-processor and Wi-Fi manager."""
+    spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+    esp32_cs = digitalio.DigitalInOut(board.ESP_CS)  # ✅ Correct Pin
+    esp32_ready = digitalio.DigitalInOut(board.ESP_BUSY)  # ✅ Correct Pin
+    esp32_reset = digitalio.DigitalInOut(board.ESP_RESET)  # ✅ Correct Pin
+    esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
+    wifi = adafruit_esp32spi_wifimanager.ESPSPI_WiFiManager(esp, secrets)
+    return esp, wifi
 
-# ✅ Show the Display Group
-display.root_group = splash
+# ✅ Connect to Wi-Fi
+def connect_to_wifi(wifi, max_retries=10):
+    """Connect to Wi-Fi with retry logic."""
+    retries = 0
+    while retries < max_retries:
+        try:
+            wifi.connect()
+            print("✅ Wi-Fi Connected!")
+            return True
+        except RuntimeError as e:
+            print(f"❌ Wi-Fi failed: {e}")
+            retries += 1
+            time.sleep(2)
+    return False
 
-# ✅ Setup Wi-Fi using the **CORRECT PINS for PyPortal**
-print("Initializing Wi-Fi...")
+# ✅ Format IP Address
+def format_ip(raw_ip):
+    """Convert a bytearray IP address to a human-readable string."""
+    return ".".join(str(b) for b in raw_ip)
 
-spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
-esp32_cs = digitalio.DigitalInOut(board.ESP_CS)  # ✅ Correct Pin
-esp32_ready = digitalio.DigitalInOut(board.ESP_BUSY)  # ✅ Correct Pin
-esp32_reset = digitalio.DigitalInOut(board.ESP_RESET)  # ✅ Correct Pin
-esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
+# ✅ Format MAC Address
+def format_mac(raw_mac):
+    """Convert a bytearray MAC address to a human-readable string."""
+    return ":".join(f"{b:02X}" for b in raw_mac)
 
-wifi = adafruit_esp32spi_wifimanager.ESPSPI_WiFiManager(esp, secrets)
+# ✅ Main Function
+def main():
+    # ✅ Check if SD card is mounted
+    if storage.getmount("/"):
+        print("✅ SD card is already mounted, skipping SD setup.")
 
-# ✅ Connect to Wi-Fi with Retry Logic
-print("Connecting to Wi-Fi...")
+    # ✅ Initialize Display and Labels
+    display, splash = initialize_display()
+    text_area_ip, text_area_ssid, text_area_mac = create_labels(splash)
 
-MAX_RETRIES = 10
-retries = 0
+    # ✅ Initialize Wi-Fi
+    print("Initializing Wi-Fi...")
+    esp, wifi = initialize_wifi()
 
-while retries < MAX_RETRIES:
-    try:
-        wifi.connect()
-        print("✅ Wi-Fi Connected!")
-        break  # Exit loop if successful
-    except RuntimeError as e:
-        print(f"❌ Wi-Fi failed: {e}")
-        retries += 1
-        time.sleep(2)
+    # ✅ Connect to Wi-Fi
+    print("Connecting to Wi-Fi...")
+    if not connect_to_wifi(wifi):
+        print("❌ Failed to confirm Wi-Fi connection. Exiting.")
+        text_area_ip.text = "Wi-Fi Error"
+        while True:
+            time.sleep(1)
 
-# ✅ FIX: Use `esp.is_connected` Instead of `WL_CONNECTED`
-if not esp.is_connected:
-    print("❌ Failed to confirm Wi-Fi connection. Exiting.")
-    text_area_ip.text = "Wi-Fi Error"
+    # ✅ Display IP Address
+    raw_ip = esp.ip_address
+    formatted_ip = format_ip(raw_ip)
+    print(f"✅ Connected! IP Address: {formatted_ip}")
+    text_area_ip.text = f"IP: {formatted_ip}"
+
+    # ✅ Display SSID
+    ssid = secrets["ssid"]  # Retrieve SSID from secrets.py
+    print(f"✅ SSID: {ssid}")
+    text_area_ssid.text = f"SSID: {ssid}"
+
+    # ✅ Display MAC Address
+    mac_address = format_mac(esp.MAC_address)
+    print(f"✅ MAC Address: {mac_address}")
+    text_area_mac.text = f"MAC: {mac_address}"
+
+    # ✅ Keep the Program Running
     while True:
         time.sleep(1)
 
-# ✅ FIX: Convert `bytearray` to Proper IP Address String
-raw_ip = esp.ip_address
-formatted_ip = ".".join(str(b) for b in raw_ip)  # Converts bytearray to readable IP format
-print(f"✅ Connected! IP Address: {formatted_ip}")
-text_area_ip.text = f"IP: {formatted_ip}"  # Display the properly formatted IP
-
-# ✅ Get and Display SSID from secrets.py
-ssid = secrets["ssid"]  # Retrieve SSID from secrets.py
-print(f"✅ SSID: {ssid}")
-text_area_ssid.text = f"SSID: {ssid}"
-
-# ✅ Get and Display MAC Address
-mac_address = ":".join(f"{b:02X}" for b in esp.MAC_address)  # Format MAC address
-print(f"✅ MAC Address: {mac_address}")
-text_area_mac.text = f"MAC: {mac_address}"
-
-# ✅ Keep the Program Running
-while True:
-    time.sleep(1)
+# Run the main function
+if __name__ == "__main__":
+    main()
