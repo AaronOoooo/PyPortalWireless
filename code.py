@@ -29,15 +29,33 @@ splash = displayio.Group()
 bg_rect = Rect(0, 0, display.width, display.height, fill=0x000000)  # Black background
 splash.append(bg_rect)
 
-# ✅ Create a Label to Display IP Address
-text_area = label.Label(
+# ✅ Create Labels to Display Network Information
+text_area_ip = label.Label(
     terminalio.FONT,
     text="Connecting...",
     color=0xFFFFFF,  # White text
-    x=50,
-    y=100
+    x=10,
+    y=30
 )
-splash.append(text_area)
+splash.append(text_area_ip)
+
+text_area_ssid = label.Label(
+    terminalio.FONT,
+    text="SSID: ...",
+    color=0xFFFFFF,  # White text
+    x=10,
+    y=60
+)
+splash.append(text_area_ssid)
+
+text_area_mac = label.Label(
+    terminalio.FONT,
+    text="MAC: ...",
+    color=0xFFFFFF,  # White text
+    x=10,
+    y=90
+)
+splash.append(text_area_mac)
 
 # ✅ Show the Display Group
 display.root_group = splash
@@ -72,7 +90,7 @@ while retries < MAX_RETRIES:
 # ✅ FIX: Use `esp.is_connected` Instead of `WL_CONNECTED`
 if not esp.is_connected:
     print("❌ Failed to confirm Wi-Fi connection. Exiting.")
-    text_area.text = "Wi-Fi Error"
+    text_area_ip.text = "Wi-Fi Error"
     while True:
         time.sleep(1)
 
@@ -80,7 +98,17 @@ if not esp.is_connected:
 raw_ip = esp.ip_address
 formatted_ip = ".".join(str(b) for b in raw_ip)  # Converts bytearray to readable IP format
 print(f"✅ Connected! IP Address: {formatted_ip}")
-text_area.text = f"IP: {formatted_ip}"  # Display the properly formatted IP
+text_area_ip.text = f"IP: {formatted_ip}"  # Display the properly formatted IP
+
+# ✅ Get and Display SSID from secrets.py
+ssid = secrets["ssid"]  # Retrieve SSID from secrets.py
+print(f"✅ SSID: {ssid}")
+text_area_ssid.text = f"SSID: {ssid}"
+
+# ✅ Get and Display MAC Address
+mac_address = ":".join(f"{b:02X}" for b in esp.MAC_address)  # Format MAC address
+print(f"✅ MAC Address: {mac_address}")
+text_area_mac.text = f"MAC: {mac_address}"
 
 # ✅ Keep the Program Running
 while True:
